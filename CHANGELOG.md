@@ -4,6 +4,52 @@ All notable changes to `n8n-nodes-akash` are documented here. This project
 adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-07-17
+
+Extends the node across all three keyless read planes — Console, on-chain Cosmos
+LCD, and the provider gateway — and marks every read op agent-callable. Still
+**zero runtime dependencies** (no `cosmjs`/`akashjs`; every plane is reached
+through n8n's built-in `httpRequest` helper) and **no code path that can spend
+funds** — every operation added here is a keyless public read.
+
+### Added
+
+- **Chain resource** — keyless Cosmos chain-REST (LCD) read spine over the Akash
+  on-chain modules, with **pinned module versions** single-sourced in the
+  transport (`deployment v1beta4`, `market v1beta5`, `provider v1beta4`,
+  `cert v1`; the stale `v1beta3` paths are dead/501). Operations: list/get
+  deployments, list/get leases, list/get orders, list/get bids, list
+  certificates, and Cosmos `bank` balances (`getBalance`). Works against
+  **mainnet** (`api.akashnet.net`) and **sandbox-2** (`api.sandbox-2.aksh.pw`)
+  via a `network` dropdown plus an additive `chainBaseUrl` override, with
+  URL-encoded `next_key` cursor pagination (`returnAll` / `limit`).
+- **Provider resource** — provider monitoring over the Console registry and the
+  provider gateway: `list` / `get` (uptime, online + audit status, GPU models,
+  capacity), `getRegions`, `getEarnings`, and **`getStatus`** which reads the
+  provider `:8443` gateway `/status` + `/version` (self-signed cert tolerated
+  via `skipSslCertificateValidation`).
+- **Market resource** — public, non-spending pre-deploy sizing: **`estimate`**
+  (`POST /v1/pricing`, cpu/memory/storage → per-cloud USD/month) and
+  **`screenBids`** (`POST /v1/bid-screening`).
+- **SDL ingest helper** — binary-or-string SDL resolution + an advisory shape
+  linter, staged for the create path in a later release.
+- **resourceLocators** — from-list pickers wired through `methods.listSearch`:
+  `searchProviders` (provider address from `/v1/providers`) and
+  `searchChainDeployments` (deployment `dseq` from the chain deployments list).
+- **`usableAsTool`** — the node is now agent-callable; every v0.3.0 operation is
+  a keyless, zero-spend read, so exposing it to AI agents moves no funds.
+- **New `Akash Trigger` events** — `providerStatusChange` (online/audit/uptime
+  transitions), `deploymentStateChange`, and `leaseStateChange`, each a keyless
+  public read following the existing baseline-seed / transition-only semantics.
+
+### Security posture
+
+Unchanged. The node holds **no mnemonic**, signs nothing, and spends no AKT; the
+chain LCD and provider-gateway planes are keyless and never attach an
+`x-api-key`. Still **zero runtime dependencies**. No operation in this release
+moves funds; the future write path will go only through the Akash Console
+managed wallet (server-side signing).
+
 ## [0.2.0] - 2026-07-17
 
 Adds event-driven monitoring on top of the keyless read surface. Still **zero

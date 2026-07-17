@@ -39,7 +39,7 @@ describe('package shape (zero-runtime-dep gate)', () => {
 		expect(pkg.homepage).toBe('https://akash.network/docs');
 	});
 
-	it('is versioned 0.2.0', () => {
-		expect(pkg.version).toBe('0.2.0');
+	it('is versioned 0.3.0', () => {
+		expect(pkg.version).toBe('0.3.0');
 	});
 });
