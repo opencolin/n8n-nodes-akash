@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-akash",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "n8n community node for Akash Network (akash.network) \u2014 decentralized cloud compute: deployments, leases, providers, and marketplace queries",
   "keywords": [
     "n8n-community-node-package",
@@ -11,7 +11,7 @@
     "deployment"
   ],
   "license": "MIT",
-  "homepage": "https://tenki.cloud/docs",
+  "homepage": "https://akash.network/docs",
   "author": {
     "name": "Colin",
     "email": "collin@dabl.club"
@@ -40,8 +40,12 @@
   "n8n": {
     "n8nNodesApiVersion": 1,
     "strict": true,
-    "credentials": [],
-    "nodes": []
+    "credentials": [
+      "dist/credentials/AkashApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/Akash/Akash.node.js"
+    ]
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",

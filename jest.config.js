@@ -1,4 +1,4 @@
-// Jest configuration for the Tenki node test suite.
+// Jest configuration for the Akash node test suite.
 //
 // `npm test` requires `npm install` to have pulled the `jest` + `ts-jest` devDeps
 // first (added to package.json by the integrator). ts-jest compiles the *.test.ts
