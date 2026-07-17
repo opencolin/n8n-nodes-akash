@@ -24,8 +24,11 @@ describe('package shape (zero-runtime-dep gate)', () => {
 		expect(pkg.n8n.credentials).toEqual(['dist/credentials/AkashApi.credentials.js']);
 	});
 
-	it('registers exactly the compiled Akash node', () => {
-		expect(pkg.n8n.nodes).toEqual(['dist/nodes/Akash/Akash.node.js']);
+	it('registers exactly the compiled Akash nodes (action + trigger)', () => {
+		expect(pkg.n8n.nodes).toEqual([
+			'dist/nodes/Akash/Akash.node.js',
+			'dist/nodes/AkashTrigger/AkashTrigger.node.js',
+		]);
 	});
 
 	it('pins the n8n nodes API version to 1', () => {
@@ -36,7 +39,7 @@ describe('package shape (zero-runtime-dep gate)', () => {
 		expect(pkg.homepage).toBe('https://akash.network/docs');
 	});
 
-	it('is versioned 0.1.0', () => {
-		expect(pkg.version).toBe('0.1.0');
+	it('is versioned 0.2.0', () => {
+		expect(pkg.version).toBe('0.2.0');
 	});
 });
