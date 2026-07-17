@@ -1,0 +1,10 @@
+{
+	"node": "n8n-nodes-akash.akash",
+	"nodeVersion": "1.0",
+	"codexVersion": "1.0",
+	"categories": ["Development", "Infrastructure", "Utility"],
+	"resources": {
+		"credentialDocumentation": [{ "url": "https://akash.network/docs" }],
+		"primaryDocumentation": [{ "url": "https://akash.network/docs" }]
+	}
+}
