@@ -3,6 +3,22 @@
 > Newest entries at top. Any agent resuming this project: read ORCHESTRATION.md first,
 > then this file, then RELEASE-PLAN.md (once the council lands it).
 
+## 2026-07-17 — v0.3.0 MERGED + TAGGED + PUSHED; v0.4.0 launched; repo PUBLIC
+
+- **Repo public:** https://github.com/opencolin/n8n-nodes-akash (main + tags pushed;
+  history secret-scanned clean before publish).
+- **v0.3.0 GREEN, merged + tagged** (`v0.3.0`, merge `8e8b35c`; run `wf_53b3a799-cdf`,
+  9 agents, 62 tests). Chain LCD spine (pinned versions, next_key pagination), provider
+  monitoring incl. :8443 gateway, market estimate + bid screening, SDL ingest,
+  resourceLocators, usableAsTool reads, deployment/provider state-change triggers.
+  Reviewers LIVE-PROBED endpoints and caught 3 real majors pre-merge (deployment.id.dseq
+  path; Etc/UTC rejected by /v1/bid-screening — default now America/Chicago); fix agent
+  resolved all, re-verified green.
+- **v0.4.0 workflow launched** (run `wf_bf0b2fd3-9ff`) in `.worktrees/release-v0.4.0`:
+  authed account/deployment/lease reads + cost/status monitors + dry-run Create builder.
+  NOTE: its authed live gates need a human Console x-api-key in .env.local — absent this
+  session, so those gates defer (build does not block).
+
 ## 2026-07-17 — v0.2.0 MERGED + TAGGED; v0.3.0 launched
 
 - **v0.2.0 GREEN, merged + tagged** (`v0.2.0`, merge `7c75ec3`; run `wf_1ae45622-ff8`,
