@@ -3,6 +3,27 @@
 > Newest entries at top. Any agent resuming this project: read ORCHESTRATION.md first,
 > then this file, then RELEASE-PLAN.md (once the council lands it).
 
+## 2026-07-17 — v0.4.0 INTEGRATED (GREEN, not yet merged)
+
+- **v0.4.0 wired + GREEN** in `.worktrees/release-v0.4.0` (`build && lint && test` all
+  pass; 14 suites / 74 tests). Authed (`x-api-key`, NON-SPENDING) backbone: **Account**
+  (balance / usage / wallets / weekly-cost / whoami), managed **Deployment** reads
+  (list / get) + keyless getPublic + the **ZERO-SPEND dry-run `create`** builder
+  (`dryRun` default TRUE, no POST wired — real spend deferred to v1.1.0, HUMAN-ONLY),
+  managed-wallet **Bid** poll (`listForDeployment`), the `searchDeployments`
+  resourceLocator, and two new authed trigger events (`deploymentStatusChange`,
+  `costThreshold`). Version bumped 0.3.0 → 0.4.0; still **zero runtime deps**, no
+  mnemonic, no fund-moving code path.
+- **Integrator note:** the `account-and-bid-authed-reads` builder package did not land its
+  files in the worktree (Account/Bid descriptions + `resources/account/*` +
+  `resources/bid/listForDeployment.ts` were absent). The integrator authored them to spec
+  from RELEASE-PLAN §v0.4.0 + `docs/research/console-api.md`, mirroring the existing
+  Console-plane resource/description idioms. Worth a review pass before merge.
+- **Not yet run:** the LIVE `x-api-key` NON-SPENDING gates (`/v1/balances`, `/v1/wallets`,
+  `/v1/usage/history`, `/v1/weekly-cost`, `/v1/user/me`, `/v1/deployments`, `/v1/bids`
+  shape confirmation) — HUMAN-provided key required; account/wallet/usage/bid response
+  shapes are read defensively pending that gate.
+
 ## 2026-07-17 — v0.2.0 MERGED + TAGGED; v0.3.0 launched
 
 - **v0.2.0 GREEN, merged + tagged** (`v0.2.0`, merge `7c75ec3`; run `wf_1ae45622-ff8`,

@@ -56,6 +56,52 @@ async function akashPublicGet(
 }
 
 /**
+ * Self-contained AUTHED Console GET for the Trigger node's two NON-SPENDING monitoring events
+ * (`deploymentStatusChange`, `costThreshold`).
+ *
+ * The authed sibling of {@link akashPublicGet}: it first asserts an `akashApi` credential is
+ * attached — surfacing a clear, actionable {@link NodeOperationError} otherwise, since the keyless
+ * events leave the credential optional — and then issues a GET through
+ * `httpRequestWithAuthentication`, which injects the single `x-api-key` header from the credential.
+ * **GET only:** the reads it serves (`/v1/deployments/{dseq}`, `/v1/balances`, `/v1/weekly-cost`)
+ * are pure managed-account reads that never sign a transaction or spend funds. The outer
+ * `{ data: … }` envelope is stripped via {@link unwrapData} for uniformity with the keyless reads.
+ *
+ * @param ctx  The active poll context (supplies the authed HTTP helper + node ref + credentials).
+ * @param path The Console path beginning with `/` (e.g. `/v1/balances`).
+ * @param qs   Optional query-string object.
+ * @returns The parsed response body, with the outer `{ data: … }` envelope stripped when present.
+ * @throws A {@link NodeOperationError} when no credential is attached, or a {@link NodeApiError} on
+ *   an HTTP failure (never a raw HTTP error).
+ */
+async function akashAuthedGet(
+	ctx: IPollFunctions,
+	path: string,
+	qs?: IDataObject,
+): Promise<IDataObject> {
+	try {
+		await ctx.getCredentials('akashApi');
+	} catch {
+		throw new NodeOperationError(
+			ctx.getNode(),
+			'This event requires an Akash API key credential (x-api-key). Attach an Akash API credential to the trigger.',
+		);
+	}
+
+	try {
+		const response = await ctx.helpers.httpRequestWithAuthentication.call(ctx, 'akashApi', {
+			method: 'GET',
+			url: CONSOLE_BASE_URL + path,
+			qs,
+			json: true,
+		});
+		return unwrapData(response);
+	} catch (error) {
+		throw new NodeApiError(ctx.getNode(), error as JsonObject);
+	}
+}
+
+/**
  * Conditionally strip the outer `{ data: … }` envelope. Only a non-null, non-array object that
  * owns a `data` property is unwrapped; arrays and plain objects without `data` are returned
  * verbatim (mirrors `consoleApiRequest.unwrapData`).
@@ -251,35 +297,143 @@ function extractArray(response: IDataObject, key: string): IDataObject[] {
 	return Array.isArray(nested) ? (nested as IDataObject[]) : [];
 }
 
+/** Return the first finite numeric value found among the candidate keys (defensive multi-key read). */
+function firstNumber(source: IDataObject, keys: string[]): number | undefined {
+	for (const key of keys) {
+		const value = readNumber(source, key);
+		if (value !== undefined) {
+			return value;
+		}
+	}
+	return undefined;
+}
+
 /**
- * Akash Trigger — keyless, zero-spend, agent-safe polling trigger for the Akash marketplace.
+ * Read the USD credit figure off an authed `/v1/balances` response.
+ *
+ * Spec shape (VERIFIED spec-read, live-UNVERIFIED without an x-api-key): `{ balance, deployments,
+ * total }`, USD-denominated. `balance` is the available spendable credit; `creditAmount`, `available`
+ * and `total` are probed as defensive fallbacks. The exact figure the alert should track is confirmed
+ * at the live x-api-key gate.
+ */
+function readCreditBalance(response: IDataObject): number | undefined {
+	return firstNumber(response, ['balance', 'creditAmount', 'available', 'total']);
+}
+
+/**
+ * Read the recent-spend figure off an authed `/v1/weekly-cost` response.
+ *
+ * The `/v1/weekly-cost` body shape is spec-level (live-UNVERIFIED without an x-api-key): the daily
+ * figure is probed first (`dailySpend`/`dailyCost`/`daily`), then a generic spend/cost/amount field,
+ * falling back to a weekly total. Confirm the exact field at the live x-api-key gate.
+ */
+function readDailySpend(response: IDataObject): number | undefined {
+	return firstNumber(response, [
+		'dailySpend',
+		'dailyCost',
+		'daily',
+		'spend',
+		'cost',
+		'amount',
+		'weeklyCost',
+		'total',
+	]);
+}
+
+/**
+ * Read the escrow balance figure off a `/v1/deployments/{dseq}` `escrow_account` block.
+ *
+ * Handles both a nested `balance:{ amount }` and a flat numeric `balance`; returns `undefined` when
+ * the figure is absent or non-numeric (e.g. a string-encoded chain amount) so the caller falls
+ * through to the lease-presence check. The exact shape is confirmed at the live x-api-key gate.
+ */
+function readEscrowBalance(escrow: IDataObject): number | undefined {
+	const balance = escrow.balance;
+	if (typeof balance === 'object' && balance !== null && !Array.isArray(balance)) {
+		return readNumber(balance as IDataObject, 'amount');
+	}
+	return readNumber(escrow, 'balance');
+}
+
+/**
+ * Derive a coarse status signal from the authed `GET /v1/deployments/{dseq}` detail.
+ *
+ * Spec shape: `{ deployment:{ id, state, … }, leases:[…], escrow_account:{…} }`. This authed detail
+ * shape is spec-level (live-UNVERIFIED without an x-api-key), so every field is read defensively and
+ * the exact escrow/state field names must be confirmed at the live x-api-key gate:
+ *  - `closed`         — the deployment `state` reads `closed`.
+ *  - `underfunded`    — the escrow account is depleted/overdrawn (its `state`, or a non-positive
+ *                       escrow balance).
+ *  - `no-active-bids` — the deployment is live but no lease/bid has been accepted yet (empty `leases`).
+ *  - `active`         — otherwise (a funded deployment with at least one lease); the raw non-closed
+ *                       `state` is passed through when present.
+ */
+function deriveDeploymentStatus(detail: IDataObject): string {
+	const deployment = (detail.deployment as IDataObject) ?? {};
+	const escrow = (detail.escrow_account as IDataObject) ?? {};
+	const leases = extractArray(detail, 'leases');
+	const state = readString(deployment, 'state').toLowerCase();
+
+	if (state === 'closed') {
+		return 'closed';
+	}
+
+	const escrowState = readString(escrow, 'state').toLowerCase();
+	const escrowBalance = readEscrowBalance(escrow);
+	if (
+		escrowState === 'overdrawn' ||
+		escrowState === 'underfunded' ||
+		(escrowBalance !== undefined && escrowBalance <= 0)
+	) {
+		return 'underfunded';
+	}
+
+	if (leases.length === 0) {
+		return 'no-active-bids';
+	}
+
+	return state || 'active';
+}
+
+/**
+ * Akash Trigger — zero-spend, agent-safe polling trigger for the Akash marketplace.
  *
  * Starts a workflow when a GPU rental price crosses a bound, GPU units free up (or fill), network
  * capacity for a resource crosses a bound, the AKT/USD spot price moves, a provider's status changes
- * (goes offline, gains/loses its audit, or its uptime drops materially), or an on-chain deployment
- * or lease transitions state. Every event is a **public read** — the node declares **no
- * credential**: GPU price/inventory, network capacity and provider status come from the Akash
- * Console public API, deployment/lease state from the keyless Cosmos chain LCD (mainnet or the
- * sandbox-2 override), and AKT price from CoinGecko (with a Console spot-price fallback). Nothing
- * here signs a transaction or spends funds.
+ * (goes offline, gains/loses its audit, or its uptime drops materially), an on-chain deployment or
+ * lease transitions state, a managed deployment's status changes (closed / underfunded /
+ * no-active-bids), or account cost/credit crosses a bound (credits-low / daily-spend-spike).
+ *
+ * Most events are **keyless public reads**: GPU price/inventory, network capacity and provider
+ * status come from the Akash Console public API, deployment/lease state from the keyless Cosmos
+ * chain LCD (mainnet or the sandbox-2 override), and AKT price from CoinGecko (with a Console
+ * spot-price fallback). The node therefore declares its `akashApi` credential **optional** — the
+ * keyless events keep working with no credential attached.
+ *
+ * The two **authed** monitoring events — `deploymentStatusChange` and `costThreshold` — require an
+ * Akash API key (sent as the single `x-api-key` header) and read the managed-account Console
+ * endpoints `/v1/deployments/{dseq}`, `/v1/balances` and `/v1/weekly-cost`. They are **GET-only,
+ * NON-SPENDING** account reads: nothing here signs a transaction or spends funds.
  *
  * ## Threshold-cross / dedupe / baseline-seed semantics
  *
  * The node uses the n8n `poll` framework with per-event state persisted in
  * `getWorkflowStaticData('node')`:
  *
- * - **Threshold events** (`gpuPriceThreshold`, `capacityAvailable`, `aktPriceThreshold`) store a
- *   last-seen `satisfied` boolean per key and emit **only** on the not-satisfied → satisfied
- *   transition. While the value stays satisfied nothing re-fires (dedupe); when it returns to
- *   not-satisfied the key re-arms so a later re-cross emits again.
+ * - **Threshold events** (`gpuPriceThreshold`, `capacityAvailable`, `aktPriceThreshold`,
+ *   `costThreshold`) store a last-seen `satisfied` boolean per key and emit **only** on the
+ *   not-satisfied → satisfied transition. While the value stays satisfied nothing re-fires
+ *   (dedupe); when it returns to not-satisfied the key re-arms so a later re-cross emits again.
  * - **`gpuAvailabilityChange`** stores the last free-unit count per GPU SKU and emits when the
  *   count differs from the stored value.
  * - **State-transition events** (`providerStatusChange`, `deploymentStateChange`,
- *   `leaseStateChange`) store the last-seen status/state per key (provider address, or the
- *   deployment/lease id tuple) and emit only when a genuine transition is observed — a provider
- *   going offline / audit-flip / material uptime drop, or a deployment/lease state string changing.
- *   The chain events accept an `includeClosed` toggle (default off) that suppresses transitions
- *   **into** the `closed` state, and a Network toggle selecting mainnet or the sandbox-2 LCD.
+ *   `leaseStateChange`, `deploymentStatusChange`) store the last-seen status/state per key (provider
+ *   address, the deployment/lease id tuple, or the managed DSEQ) and emit only when a genuine
+ *   transition is observed — a provider going offline / audit-flip / material uptime drop, a
+ *   deployment/lease state string changing, or a managed deployment's derived status
+ *   (closed / underfunded / no-active-bids / active) changing. The keyless chain events accept an
+ *   `includeClosed` toggle (default off) that suppresses transitions **into** the `closed` state,
+ *   and a Network toggle selecting mainnet or the sandbox-2 LCD.
  * - **Baseline-seed on activation:** the FIRST poll after activation records current state WITHOUT
  *   emitting — even if a surface is already "hot" (price already above the bound) — so activating
  *   the trigger over a populated marketplace does not flood the workflow. Only genuine
@@ -287,8 +441,8 @@ function extractArray(response: IDataObject, key: string): IDataObject[] {
  * - **Manual (test) runs** return the current computed sample without mutating any static data.
  *
  * Self-contained by design: it does not import the `IExecuteFunctions` Console transport helper
- * (it owns {@link akashPublicGet}), mirroring `TenkiTrigger`. The one shared dependency is
- * {@link coingeckoRequest}, the canonical AKT market-data helper.
+ * (it owns {@link akashPublicGet}/{@link akashAuthedGet}), mirroring `TenkiTrigger`. The one shared
+ * dependency is {@link coingeckoRequest}, the canonical AKT market-data helper.
  */
 export class AkashTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -306,6 +460,14 @@ export class AkashTrigger implements INodeType {
 		polling: true,
 		inputs: [],
 		outputs: ['main'],
+		credentials: [
+			{
+				// Optional: the keyless events (GPU/network/provider/chain/AKT) need no credential;
+				// only the two authed monitoring events (deploymentStatusChange, costThreshold) require one.
+				name: 'akashApi',
+				required: false,
+			},
+		],
 		properties: [
 			{
 				displayName: 'Event',
@@ -327,10 +489,22 @@ export class AkashTrigger implements INodeType {
 							'Fires when network-wide available capacity for a resource crosses your threshold',
 					},
 					{
+						name: 'Cost Threshold',
+						value: 'costThreshold',
+						description:
+							'Fires when managed-account credit or recent spend crosses your threshold (needs an Akash API key)',
+					},
+					{
 						name: 'Deployment State Change',
 						value: 'deploymentStateChange',
 						description:
 							'Fires when an on-chain deployment transitions state (e.g. active to closed)',
+					},
+					{
+						name: 'Deployment Status Change',
+						value: 'deploymentStatusChange',
+						description:
+							'Fires when a managed deployment\'s status changes (closed, underfunded, or no active bids; needs an Akash API key)',
 					},
 					{
 						name: 'GPU Availability Change',
@@ -434,15 +608,40 @@ export class AkashTrigger implements INodeType {
 				},
 			},
 			{
+				displayName: 'Cost Metric',
+				name: 'costMetric',
+				type: 'options',
+				default: 'creditsLow',
+				description:
+					'Which managed-account cost figure to compare against the threshold (both are authed, GET-only, NON-SPENDING reads via the Akash API key)',
+				options: [
+					{
+						name: 'Credits Low',
+						value: 'creditsLow',
+						description: 'Watch the USD credit balance from /v1/balances (typically with direction "below")',
+					},
+					{
+						name: 'Daily Spend Spike',
+						value: 'dailySpendSpike',
+						description: 'Watch the recent spend figure from /v1/weekly-cost (typically with direction "above")',
+					},
+				],
+				displayOptions: {
+					show: {
+						event: ['costThreshold'],
+					},
+				},
+			},
+			{
 				displayName: 'Threshold',
 				name: 'threshold',
 				type: 'number',
 				default: 0,
 				description:
-					'The value the watched figure is compared against: USD per GPU-hour for GPU price, native resource units (CPU millicores, memory/storage bytes, GPU count) for capacity, or USD for AKT price',
+					'The value the watched figure is compared against: USD per GPU-hour for GPU price, native resource units (CPU millicores, memory/storage bytes, GPU count) for capacity, USD for AKT price, or USD credit/spend for cost monitoring',
 				displayOptions: {
 					show: {
-						event: ['gpuPriceThreshold', 'capacityAvailable', 'aktPriceThreshold'],
+						event: ['gpuPriceThreshold', 'capacityAvailable', 'aktPriceThreshold', 'costThreshold'],
 					},
 				},
 			},
@@ -467,7 +666,7 @@ export class AkashTrigger implements INodeType {
 				],
 				displayOptions: {
 					show: {
-						event: ['gpuPriceThreshold', 'capacityAvailable', 'aktPriceThreshold'],
+						event: ['gpuPriceThreshold', 'capacityAvailable', 'aktPriceThreshold', 'costThreshold'],
 					},
 				},
 			},
@@ -515,10 +714,10 @@ export class AkashTrigger implements INodeType {
 				name: 'dseq',
 				type: 'string',
 				default: '',
-				description: 'The deployment sequence number (DSEQ). For Deployment State Change, leave empty to watch every deployment the owner has, or set it to watch a single deployment; for Lease State Change it is part of the lease ID.',
+				description: 'The deployment sequence number (DSEQ). For Deployment State Change, leave empty to watch every deployment the owner has, or set it to watch a single deployment; for Lease State Change it is part of the lease ID; for Deployment Status Change it is required (the managed deployment to watch via the authed Console API).',
 				displayOptions: {
 					show: {
-						event: ['deploymentStateChange', 'leaseStateChange'],
+						event: ['deploymentStateChange', 'leaseStateChange', 'deploymentStatusChange'],
 					},
 				},
 			},
@@ -636,8 +835,12 @@ export class AkashTrigger implements INodeType {
 			emitted = await pollProviderStatusChange.call(this, staticData, isManual);
 		} else if (event === 'deploymentStateChange') {
 			emitted = await pollDeploymentStateChange.call(this, staticData, isManual);
+		} else if (event === 'deploymentStatusChange') {
+			emitted = await pollDeploymentStatusChange.call(this, staticData, isManual);
 		} else if (event === 'leaseStateChange') {
 			emitted = await pollLeaseStateChange.call(this, staticData, isManual);
+		} else if (event === 'costThreshold') {
+			emitted = await pollCostThreshold.call(this, staticData, isManual);
 		} else {
 			throw new NodeOperationError(this.getNode(), `Unsupported event: ${event}`);
 		}
@@ -1262,6 +1465,130 @@ async function pollLeaseStateChange(
 
 	staticData.leaseState = next;
 	staticData.leaseStateSeeded = true;
+
+	return fresh;
+}
+
+/**
+ * Poll the AUTHED managed-account cost surface and emit when credit/spend crosses the bound.
+ *
+ * A THRESHOLD event mirroring {@link pollAktPriceThreshold}: with `costMetric = creditsLow` it reads
+ * the USD credit figure from the authed `GET /v1/balances`; with `dailySpendSpike` it reads the
+ * recent-spend figure from the authed `GET /v1/weekly-cost`. Both are GET-only, NON-SPENDING reads
+ * through {@link akashAuthedGet} (which requires the `akashApi` credential). The chosen value is
+ * compared to the threshold in the given direction; the last-seen `satisfied` boolean is stored in
+ * `staticData.costThreshold`. Emission is the not-satisfied → satisfied transition, after the
+ * baseline seed. Manual runs return the current sample without mutating state.
+ *
+ * The exact `/v1/balances` and `/v1/weekly-cost` field names are spec-level (live-UNVERIFIED without
+ * an x-api-key): {@link readCreditBalance}/{@link readDailySpend} probe the plausible keys
+ * defensively — confirm the figures at the live x-api-key gate.
+ */
+async function pollCostThreshold(
+	this: IPollFunctions,
+	staticData: IDataObject,
+	isManual: boolean,
+): Promise<IDataObject[]> {
+	const costMetric = this.getNodeParameter('costMetric', 'creditsLow') as string;
+	const threshold = this.getNodeParameter('threshold', 0) as number;
+	const direction = this.getNodeParameter('direction', 'above') as string;
+
+	let value: number | undefined;
+	if (costMetric === 'dailySpendSpike') {
+		const response = await akashAuthedGet(this, '/v1/weekly-cost');
+		value = readDailySpend(response);
+	} else {
+		const response = await akashAuthedGet(this, '/v1/balances');
+		value = readCreditBalance(response);
+	}
+
+	const satisfied = value !== undefined && crosses(value, threshold, direction);
+
+	const sample: IDataObject = {
+		event: 'costThreshold',
+		costMetric,
+		value: value ?? null,
+		threshold,
+		direction,
+		satisfied,
+	};
+
+	if (isManual) {
+		return [sample];
+	}
+
+	const previous = staticData.costThreshold as { satisfied: boolean } | undefined;
+	const seeded = staticData.costThresholdSeeded === true;
+	const emit = seeded && previous?.satisfied !== true && satisfied === true;
+
+	staticData.costThreshold = { satisfied };
+	staticData.costThresholdSeeded = true;
+
+	return emit ? [sample] : [];
+}
+
+/**
+ * Poll the AUTHED managed-deployment status surface and emit when a deployment's status changes.
+ *
+ * A STATE-TRANSITION event mirroring {@link pollDeploymentStateChange}/{@link pollProviderStatusChange}:
+ * it reads the required `dseq` deployment detail via the authed `GET /v1/deployments/{dseq}` (GET
+ * only, NON-SPENDING, through {@link akashAuthedGet}), derives a coarse status signal
+ * (`closed` | `underfunded` | `no-active-bids` | `active`) via {@link deriveDeploymentStatus}, and
+ * stores the last-seen status per DSEQ in `staticData.deploymentStatus`. After the baseline seed an
+ * item is emitted on any genuine status transition (including into `closed`, which is an alertable
+ * signal for this event). Manual runs return the current sample without mutating state.
+ *
+ * The authed detail shape (`{ deployment, leases, escrow_account }`) is spec-level (live-UNVERIFIED
+ * without an x-api-key): every field is read defensively via the file's `readString`/`readNumber`/
+ * `extractArray` helpers — confirm the exact status/escrow shapes at the live x-api-key gate.
+ */
+async function pollDeploymentStatusChange(
+	this: IPollFunctions,
+	staticData: IDataObject,
+	isManual: boolean,
+): Promise<IDataObject[]> {
+	const dseq = (this.getNodeParameter('dseq', '') as string).trim();
+
+	if (!dseq) {
+		throw new NodeOperationError(
+			this.getNode(),
+			'Deployment Status Change: a Deployment Sequence (DSEQ) is required.',
+		);
+	}
+
+	const response = await akashAuthedGet(this, `/v1/deployments/${encodeURIComponent(dseq)}`);
+	const deployment = (response.deployment as IDataObject) ?? {};
+	const id = (deployment.id as IDataObject) ?? {};
+	const obsOwner = readString(id, 'owner');
+	const obsDseq = scalarKey(id.dseq) || dseq;
+	const status = deriveDeploymentStatus(response);
+
+	const sample: IDataObject = {
+		event: 'deploymentStatusChange',
+		owner: obsOwner,
+		dseq: obsDseq,
+		status,
+		state: readString(deployment, 'state'),
+		leaseCount: extractArray(response, 'leases').length,
+	};
+
+	if (isManual) {
+		return [sample];
+	}
+
+	const known = (staticData.deploymentStatus as Record<string, { status: string }>) ?? {};
+	const seeded = staticData.deploymentStatusSeeded === true;
+	const next: Record<string, { status: string }> = { ...known };
+	const fresh: IDataObject[] = [];
+
+	const previous = known[obsDseq];
+	if (seeded && previous !== undefined && previous.status !== status) {
+		fresh.push({ ...sample, previousStatus: previous.status });
+	}
+	next[obsDseq] = { status };
+
+	staticData.deploymentStatus = next;
+	staticData.deploymentStatusSeeded = true;
 
 	return fresh;
 }
