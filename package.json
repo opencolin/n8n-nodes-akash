@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-akash",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "n8n community node for Akash Network (akash.network) \u2014 decentralized cloud compute: deployments, leases, providers, and marketplace queries",
   "keywords": [
     "n8n-community-node-package",
@@ -44,7 +44,8 @@
       "dist/credentials/AkashApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/Akash/Akash.node.js"
+      "dist/nodes/Akash/Akash.node.js",
+      "dist/nodes/AkashTrigger/AkashTrigger.node.js"
     ]
   },
   "devDependencies": {

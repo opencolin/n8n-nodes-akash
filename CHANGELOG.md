@@ -4,6 +4,43 @@ All notable changes to `n8n-nodes-akash` are documented here. This project
 adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-07-17
+
+Adds event-driven monitoring on top of the keyless read surface. Still **zero
+runtime dependencies** and no code path that can spend funds — every trigger
+event is a keyless public GET.
+
+### Added
+
+- **`Akash Trigger` node** — a polling trigger with four keyless, zero-spend
+  events:
+  - **GPU Price Threshold** (`gpuPriceThreshold`) — polls `GET /v1/gpu-prices`
+    and emits when a selected GPU model's price crosses a bound (per-model
+    dropdown populated live from the marketplace).
+  - **GPU Availability Change** (`gpuAvailabilityChange`) — polls `GET /v1/gpu`
+    and emits when the free-unit count for any SKU changes.
+  - **Capacity Available** (`capacityAvailable`) — polls
+    `GET /v1/network-capacity` and emits when available network capacity crosses
+    a bound.
+  - **AKT Price Threshold** (`aktPriceThreshold`) — emits when the AKT/USD spot
+    price crosses a bound.
+- **Baseline-seed on activation** — the first poll after activation records the
+  current surface as a baseline and does **not** emit, so turning the trigger on
+  never floods the workflow with historical state; events fire only on
+  subsequent transitions.
+- **Shared `coingeckoRequest` transport** — fetches AKT/USD from CoinGecko and
+  falls back to the Console `GET /v1/market-data` endpoint on any CoinGecko
+  error (rate-limit/network/non-2xx) or missing price. Under the Console
+  fallback, market-cap / 24h-volume / 24h-change are unavailable and the trigger
+  surfaces a warning; the spot price is always returned.
+
+### Security posture
+
+Unchanged from 0.1.0. The trigger holds **no mnemonic**, signs nothing, and
+spends no AKT — all four events are keyless public reads. Still **zero runtime
+dependencies** (CoinGecko and the Console are reached through n8n's built-in
+`httpRequest` helper).
+
 ## [0.1.0] - 2026-07-17
 
 Foundation release. Ships the keyless public read surface for Akash Network —
