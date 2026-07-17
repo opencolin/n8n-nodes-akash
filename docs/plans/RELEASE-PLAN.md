@@ -417,6 +417,17 @@ financial gate. This is the API-stability + zero-runtime-dep promise.
 
 ### v1.1.0 — Managed-wallet DEPLOY lifecycle (additive, human-gated)
 
+> **⛔ PRE-1.1.0 HUMAN GATE (added 2026-07-17 after the v0.4.0 review):** the node sets
+> node-level `usableAsTool: true` and n8n has no per-operation tool flag, so
+> `deployment:create` is reachable by AI Agents. This is SAFE in 0.4.0–1.0.0 only because
+> create is dry-run-only (throws on `dryRun=false`, zero network on `dryRun=true`).
+> DO NOT wire the live POST in this release until the user decides one of:
+> (a) split write ops into a separate non-`usableAsTool` node (recommended), or
+> (b) drop `usableAsTool` from the main node, or (c) accept agent-reachable spend with an
+> explicit opt-in mechanism. Implementation agents: if this gate is undecided, build
+> everything EXCEPT flipping the dry-run guard, and leave the live POST throwing.
+
+
 **Theme:** The strategic flagship write path — deploy-on-webhook + AI-Agent-adjacent deploy, via
 the Console **managed wallet** (server-side Cosmos signing, `x-api-key`, zero runtime deps, no
 mnemonic): create → poll bids → lease → deposit/update/close, with live status polling. Additive
