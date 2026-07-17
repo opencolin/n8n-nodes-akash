@@ -3,6 +3,14 @@
 > Newest entries at top. Any agent resuming this project: read ORCHESTRATION.md first,
 > then this file, then RELEASE-PLAN.md (once the council lands it).
 
+## 2026-07-17 — v0.1.0 workflow launched
+
+- Release-implementer adapted for Akash (context block: Console API x-api-key spine,
+  keyless LCD, financial boundary) and committed at `tools/akash-release-implementer.js`
+  — invoke via Workflow scriptPath with args {version, worktree, repo}. Live copy this
+  session: scratchpad/akash-release-implementer.js (run `wf_9ea31272-274`).
+- Worktree `.worktrees/release-v0.1.0` (branch `release/v0.1.0`) from main `53780d5`.
+
 ## 2026-07-17 — 🏁 PM COUNCIL COMPLETE → RELEASE-PLAN.md landed
 
 Research (5 docs: console-api, chain-rest, provider-services, sdl-and-tx-flow, ecosystem) +
