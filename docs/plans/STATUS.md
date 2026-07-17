@@ -3,6 +3,17 @@
 > Newest entries at top. Any agent resuming this project: read ORCHESTRATION.md first,
 > then this file, then RELEASE-PLAN.md (once the council lands it).
 
+## 2026-07-17 — v0.2.0 MERGED + TAGGED; v0.3.0 launched
+
+- **v0.2.0 GREEN, merged + tagged** (`v0.2.0`, merge `7c75ec3`; run `wf_1ae45622-ff8`,
+  6 agents, ZERO review issues, 28 tests). AkashTrigger polling node: GPU-price /
+  capacity / AKT-price watchers, baseline seeding + dedupe, CoinGecko parser
+  (shape-verified). All keyless Console reads the trigger uses live-verified 200.
+- **v0.3.0 workflow launched** (run `wf_53b3a799-cdf`) in `.worktrees/release-v0.3.0`:
+  provider + chain-REST marketplace intelligence, next_key pagination, provider :8443
+  gateway reads, SDL ingest, cost estimate/bid screening, resourceLocators,
+  usableAsTool on reads.
+
 ## 2026-07-17 — v0.1.0 MERGED + TAGGED; v0.2.0 launched
 
 - **v0.1.0 GREEN, merged + tagged** (`v0.1.0`, merge `06c5d79`; run `wf_9ea31272-274`,
