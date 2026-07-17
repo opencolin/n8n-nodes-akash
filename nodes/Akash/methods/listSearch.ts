@@ -16,6 +16,7 @@ import { consoleApiRequest } from '../transport/consoleApiRequest';
  *
  *   - `searchProviders`        ↔ provider `providerAddress` (Provider → Get / Get Status)
  *   - `searchChainDeployments` ↔ chain `dseq` (Chain → Get Deployment)
+ *   - `searchDeployments`      ↔ managed-deployment `dseq` (Deployment → Get) — authed `/v1/deployments`
  *
  * n8n calls these with an `ILoadOptionsFunctions` `this` — not the `IExecuteFunctions` that
  * `execute()` sees. That context still exposes the `getCredentials` / `helpers.httpRequest*` the
@@ -23,9 +24,12 @@ import { consoleApiRequest } from '../transport/consoleApiRequest';
  * called through a cast, exactly as the sibling Tenki node does; no execute-only member is touched.
  * `chainRestRequest` already accepts `ILoadOptionsFunctions` directly.
  *
- * Both methods are KEYLESS public reads (Console `/v1/providers`, chain LCD `deployments/list`) —
- * no `x-api-key`, no spend. The loadOptions context carries no `network`/`chainBaseUrl` node params,
- * so `searchChainDeployments` passes an explicit mainnet `baseUrl` to force the host.
+ * `searchProviders` and `searchChainDeployments` are KEYLESS public reads (Console `/v1/providers`,
+ * chain LCD `deployments/list`) — no `x-api-key`, no spend. `searchDeployments` is an AUTHED,
+ * NON-SPENDING `x-api-key` GET of the managed `/v1/deployments` list (a GET only — no lease, no
+ * spend), so it returns useful results only when a credential is attached. The loadOptions context
+ * carries no `network`/`chainBaseUrl` node params, so `searchChainDeployments` passes an explicit
+ * mainnet `baseUrl` to force the host.
  *
  * Contract for every method: fetch a single page, map each row to `{ name, value }` where `value`
  * is the id the paired executor reads back, then apply a case-insensitive client-side `filter` over
@@ -100,6 +104,60 @@ export async function searchChainDeployments(
 			const deployment = (row.deployment as IDataObject | undefined) ?? {};
 			const deploymentId = (deployment.id as IDataObject | undefined) ?? {};
 			const dseq = deploymentId.dseq != null ? String(deploymentId.dseq) : '';
+			return { name: dseq ? `dseq ${dseq}` : '(unknown dseq)', value: dseq };
+		})
+		.filter((item) => item.value !== '')
+		.filter((item) => matchesFilter(item, filter));
+
+	return { results };
+}
+
+/**
+ * Read a `dseq` off a managed-deployment list row, defensively. The Console `/v1/deployments`
+ * envelope shape is live-UNVERIFIED without a key, so a row may expose `dseq` at the top level
+ * (`{ dseq }`) OR nested chain-style (`{ deployment: { id: { dseq } } }`). Both are handled; a
+ * non-scalar or absent `dseq` yields `''` (dropped by the caller).
+ */
+function readDeploymentDseq(row: IDataObject): string {
+	const top = row.dseq;
+	if (typeof top === 'string' || typeof top === 'number') {
+		return String(top);
+	}
+	const deployment = (row.deployment as IDataObject | undefined) ?? {};
+	const deploymentId = (deployment.id as IDataObject | undefined) ?? {};
+	const nested = deploymentId.dseq;
+	if (typeof nested === 'string' || typeof nested === 'number') {
+		return String(nested);
+	}
+	return '';
+}
+
+/**
+ * Managed-deployment dropdown — AUTHED `GET /v1/deployments` (`x-api-key`, NON-SPENDING, GET-only).
+ * Maps each row to `{ name: 'dseq <n>', value: <dseq> }`, reading `dseq` defensively (top-level or
+ * chain-style nested) via {@link readDeploymentDseq}; the `dseq` string is what `executeDeploymentGet`
+ * reads back via `extractValue`. Empty values are dropped and the shared case-insensitive `filter`
+ * is applied. Envelope shape is spec-VERIFIED (`docs/research/console-api.md`): the endpoint returns
+ * `{ "data": { "deployments":[ … ] } }`, so after the `{data}` strip the page array lives under
+ * `response.deployments`; anything else yields an empty result set rather than throwing.
+ */
+export async function searchDeployments(
+	this: ILoadOptionsFunctions,
+	filter?: string,
+): Promise<INodeListSearchResult> {
+	const response = await consoleApiRequest.call(
+		this as unknown as IExecuteFunctions,
+		'GET',
+		'/v1/deployments',
+	);
+
+	const rows: IDataObject[] = Array.isArray(response.deployments)
+		? (response.deployments as IDataObject[])
+		: [];
+
+	const results: INodeListSearchItems[] = rows
+		.map((row): INodeListSearchItems => {
+			const dseq = readDeploymentDseq(row);
 			return { name: dseq ? `dseq ${dseq}` : '(unknown dseq)', value: dseq };
 		})
 		.filter((item) => item.value !== '')

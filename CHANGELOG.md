@@ -4,6 +4,61 @@ All notable changes to `n8n-nodes-akash` are documented here. This project
 adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-07-17
+
+Lights up the AUTHENTICATED (`x-api-key`) managed-wallet backbone — cost/credit
+visibility and managed-deployment monitoring — **and** de-risks the write-path
+SHAPE with a zero-spend dry-run builder, all **without crossing the financial
+boundary**. Still **zero runtime dependencies**, still **no mnemonic and no code
+path that spends funds**: every new operation is a `GET` or a dry-run request
+builder that sends nothing. The managed-wallet spend path stays deferred to
+v1.1.0 (HUMAN-ONLY). Purely additive — no wire or behavior change to existing
+ops, so the node stays `version: [1]`.
+
+### Added
+
+- **Account resource** — authed (`x-api-key`), **non-spending** managed-wallet
+  reads: `getBalance` (`GET /v1/balances`, USD credit), `getUsage`
+  (`GET /v1/usage/history` + `/stats`, optional address/date window), `getWallets`
+  (`GET /v1/wallets` — `address`, `creditAmount`, `isTrialing`), `getWeeklyCost`
+  (`GET /v1/weekly-cost`), and `whoami` (`GET /v1/user/me`, the credential-test
+  endpoint). Each is a plain read — no lease, no spend.
+- **Deployment resource** — managed-wallet deployment reads plus the zero-spend
+  builder: `list` (`GET /v1/deployments?skip=&limit=`) and `get`
+  (`GET /v1/deployments/{dseq}` → `leases[].status.services{uris,replicas,
+  ready_replicas,forwarded_ports,ips}` — **poll-based status, explicitly not
+  logs**) are authed reads; `getPublic` (`GET /v1/deployment/{owner}/{dseq}`) is
+  a keyless public read; **`create` (Dry Run)** builds and validates the
+  `POST /v1/deployments` body `{data:{sdl,deposit}}` from the SDL-ingest helper
+  and returns it **without sending** (`dryRun` default **TRUE**; no POST is
+  wired — the real write path lands in v1.1.0). `create` is a write op and moves
+  no funds by construction.
+- **Bid resource** — `listForDeployment` (`GET /v1/bids?dseq=`), the authed
+  managed-wallet bid poll for a deployment, distinct from the keyless chain bids
+  shipped in v0.3.0.
+- **resourceLocator** — `searchDeployments` (managed deployment `dseq` from the
+  authed `GET /v1/deployments`), wired through `methods.listSearch` and backing
+  the Deployment `get` and Bid `listForDeployment` DSEQ pickers.
+- **New `Akash Trigger` events** — `deploymentStatusChange` (closed /
+  underfunded / no-active-bids off `GET /v1/deployments/{dseq}`) and
+  `costThreshold` (credits-low / daily-spend-spike off `GET /v1/weekly-cost` and
+  `GET /v1/balances`), both authed `x-api-key` polls with the existing
+  baseline-seed / dedupe semantics. The `akashApi` credential is attached to the
+  trigger as optional so keyless events keep working with nothing configured.
+- **Credential test** — `akashApi` verifies against `GET /v1/user/me` (200 with a
+  valid key, 401 without).
+
+### Security posture
+
+**Zero runtime dependencies** and **no mnemonic** — unchanged. Every operation
+added here is a `GET` or a dry-run request builder: **no code path spends funds.**
+The authed reads carry only an `x-api-key` and take no lease; the `deployment:
+create` dry-run defaults on and never flips to send implicitly, and turning it
+off throws rather than spending. Write ops are never exposed as fund-moving AI
+tools — `create` rides the node-level `usableAsTool` only because it is
+dry-run-only and moves nothing. The live managed-wallet spend gate remains
+deferred to v1.1.0 and is **HUMAN-ONLY**.
+
 ## [0.3.0] - 2026-07-17
 
 Extends the node across all three keyless read planes — Console, on-chain Cosmos

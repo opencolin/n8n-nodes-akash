@@ -7,6 +7,9 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
+import { accountOperations, accountFields } from './descriptions/AccountDescription';
+import { bidOperations, bidFields } from './descriptions/BidDescription';
+import { deploymentOperations, deploymentFields } from './descriptions/DeploymentDescription';
 import { gpuOperations, gpuFields } from './descriptions/GpuDescription';
 import { networkOperations, networkFields } from './descriptions/NetworkDescription';
 import { providerOperations, providerFields } from './descriptions/ProviderDescription';
@@ -35,6 +38,16 @@ import { executeChainListBids } from './resources/chain/bid/list';
 import { executeChainGetBid } from './resources/chain/bid/get';
 import { executeChainListCertificates } from './resources/chain/certificate/list';
 import { executeChainGetBalance } from './resources/chain/account/balance';
+import { executeAccountBalance } from './resources/account/balance';
+import { executeAccountUsage } from './resources/account/usage';
+import { executeAccountWeeklyCost } from './resources/account/weeklyCost';
+import { executeAccountWhoami } from './resources/account/whoami';
+import { executeAccountWallets } from './resources/account/wallets';
+import { executeBidListForDeployment } from './resources/bid/listForDeployment';
+import { executeDeploymentList } from './resources/deployment/list';
+import { executeDeploymentGet } from './resources/deployment/get';
+import { executeDeploymentGetPublic } from './resources/deployment/getPublic';
+import { executeDeploymentCreate } from './resources/deployment/create';
 
 /**
  * Akash — decentralized compute marketplace, read plane.
@@ -47,11 +60,24 @@ import { executeChainGetBalance } from './resources/chain/account/balance';
  *     `bank` balances across mainnet + sandbox-2 (pinned module versions live in `chainRestRequest`).
  *   - Provider gateway plane — the provider `:8443` `/status` + `/version` (self-signed cert).
  *
- * `usableAsTool: true`: every v0.3.0 op is a read that moves no funds, so the node is safe to expose
- * to agents. The future spend-capable write op (0.4.0) rides a `typeVersion` bump and is gated then.
+ * v0.4.0 adds the AUTHED, NON-SPENDING `x-api-key` managed-wallet backbone — all reads or a zero-spend
+ * request builder, no code path that moves funds:
+ *   - Account — credit balance, usage history, managed wallets, weekly cost, and whoami
+ *     (`/v1/balances`, `/v1/usage/history[/stats]`, `/v1/wallets`, `/v1/weekly-cost`, `/v1/user/me`).
+ *   - Deployment — managed list/get (`/v1/deployments[/{dseq}]`, poll-based `leases[].status.services`
+ *     status, explicitly NOT logs), keyless public get (`/v1/deployment/{owner}/{dseq}`), and a
+ *     ZERO-SPEND dry-run Create that builds + validates the `POST /v1/deployments` body and sends
+ *     NOTHING (`dryRun` default TRUE; the real write path lands in v1.1.0 behind a HUMAN-ONLY gate).
+ *   - Bid — the managed-wallet bid poll for a deployment (`/v1/bids?dseq=`).
  *
- * The `akashApi` credential stays `required: false` — the public reads run keyless; it only carries
- * an `x-api-key` when a user attaches one (and the chain/gateway planes never attach it at all).
+ * `usableAsTool: true`: every read op moves no funds, so the node is safe to expose to agents. n8n has
+ * no per-operation tool flag, so `deployment: create` is exposed too — but it is DRY-RUN-ONLY (wires no
+ * POST, returns the request as data), so an agent calling it moves nothing; the real spend path (v1.1.0)
+ * stays behind `dryRun` default TRUE, which an agent cannot flip implicitly.
+ *
+ * The `akashApi` credential stays `required: false` — the public reads run keyless; the authed account/
+ * deployment/bid reads carry an `x-api-key` when a user attaches one (and the chain/gateway planes never
+ * attach it at all).
  *
  * The node is a versioned node (`version: [1]`) from day one. Akash has already churned its on-chain
  * module versions live (`deployment` past `v1beta3`→`v1beta4`, `market` to `v1beta5`); when the next
@@ -67,7 +93,7 @@ export class Akash implements INodeType {
 		version: [1],
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
 		description:
-			'Read Akash Network: GPU marketplace prices and inventory, network capacity, provider registry and gateway status, marketplace cost estimates and bid screening, and on-chain deployments, leases, orders, bids, certificates and balances — keyless public reads, no spend',
+			'Read Akash Network: GPU marketplace prices and inventory, network capacity, provider registry and gateway status, marketplace cost estimates and bid screening, on-chain deployments/leases/orders/bids/certs/balances, plus authed (x-api-key) managed-wallet account/deployment/bid reads and a zero-spend dry-run deployment builder — no code path spends funds',
 		usableAsTool: true,
 		defaults: {
 			name: 'Akash',
@@ -89,8 +115,20 @@ export class Akash implements INodeType {
 				// Alphabetized by name (n8n lint requires it once an options field has 5+ entries).
 				options: [
 					{
+						name: 'Account',
+						value: 'account',
+					},
+					{
+						name: 'Bid',
+						value: 'bid',
+					},
+					{
 						name: 'Chain',
 						value: 'chain',
+					},
+					{
+						name: 'Deployment',
+						value: 'deployment',
 					},
 					{
 						name: 'GPU',
@@ -111,6 +149,12 @@ export class Akash implements INodeType {
 				],
 				default: 'gpu',
 			},
+			...accountOperations,
+			...accountFields,
+			...bidOperations,
+			...bidFields,
+			...deploymentOperations,
+			...deploymentFields,
 			...gpuOperations,
 			...gpuFields,
 			...networkOperations,
@@ -137,7 +181,32 @@ export class Akash implements INodeType {
 
 				let result: IDataObject | IDataObject[];
 
-				if (resource === 'gpu' && operation === 'getPrices') {
+				if (resource === 'account' && operation === 'getBalance') {
+					result = await executeAccountBalance.call(this, itemIndex);
+				} else if (resource === 'account' && operation === 'getUsage') {
+					result = await executeAccountUsage.call(this, itemIndex);
+				} else if (resource === 'account' && operation === 'getWeeklyCost') {
+					result = await executeAccountWeeklyCost.call(this, itemIndex);
+				} else if (resource === 'account' && operation === 'whoami') {
+					result = await executeAccountWhoami.call(this, itemIndex);
+				} else if (resource === 'account' && operation === 'getWallets') {
+					result = await executeAccountWallets.call(this, itemIndex);
+				} else if (resource === 'bid' && operation === 'listForDeployment') {
+					result = await executeBidListForDeployment.call(this, itemIndex);
+				} else if (resource === 'deployment' && operation === 'list') {
+					result = await executeDeploymentList.call(this, itemIndex);
+				} else if (resource === 'deployment' && operation === 'get') {
+					result = await executeDeploymentGet.call(this, itemIndex);
+				} else if (resource === 'deployment' && operation === 'getPublic') {
+					result = await executeDeploymentGetPublic.call(this, itemIndex);
+				} else if (resource === 'deployment' && operation === 'create') {
+					// `deployment: create` is DRY-RUN-ONLY here: it builds + returns the POST body and wires
+					// no network write (dryRun default TRUE; the executor throws if dryRun is turned off).
+					// n8n has no per-operation tool flag, so it rides the node-level `usableAsTool: true`, but
+					// because it moves no funds by construction that exposure crosses no financial boundary —
+					// the real managed-wallet spend path lands in v1.1.0 behind a HUMAN-ONLY gate.
+					result = await executeDeploymentCreate.call(this, itemIndex);
+				} else if (resource === 'gpu' && operation === 'getPrices') {
 					result = await executeGpuPrices.call(this, itemIndex);
 				} else if (resource === 'gpu' && operation === 'getInventory') {
 					result = await executeGpuInventory.call(this, itemIndex);
