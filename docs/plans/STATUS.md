@@ -3,6 +3,17 @@
 > Newest entries at top. Any agent resuming this project: read ORCHESTRATION.md first,
 > then this file, then RELEASE-PLAN.md (once the council lands it).
 
+## 2026-07-17 — v0.1.0 MERGED + TAGGED; v0.2.0 launched
+
+- **v0.1.0 GREEN, merged + tagged** (`v0.1.0`, merge `06c5d79`; run `wf_9ea31272-274`,
+  7 agents, 24 tests). AkashApi credential (optional, keyless branch for public ops),
+  Console transport with envelope strip + normalized errors, GPU inventory/models/prices
+  + network capacity/stats reads. 5 keyless Console reads live-verified 200 during the
+  build. Deferred: /v1/user/me credential test (needs human x-api-key), load-in-n8n.
+  Orchestrator fixed the one minor (stale Tenki comment in jest.config.js) pre-merge.
+- **v0.2.0 workflow launched** (run `wf_1ae45622-ff8`) in `.worktrees/release-v0.2.0`:
+  AkashTrigger — GPU-price / capacity / AKT-price watchers with baseline seeding.
+
 ## 2026-07-17 — v0.1.0 workflow launched
 
 - Release-implementer adapted for Akash (context block: Console API x-api-key spine,
