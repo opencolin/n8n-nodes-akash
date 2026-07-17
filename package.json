@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-akash",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "n8n community node for Akash Network (akash.network) \u2014 decentralized cloud compute: deployments, leases, providers, and marketplace queries",
   "keywords": [
     "n8n-community-node-package",
