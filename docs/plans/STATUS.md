@@ -3,6 +3,25 @@
 > Newest entries at top. Any agent resuming this project: read ORCHESTRATION.md first,
 > then this file, then RELEASE-PLAN.md (once the council lands it).
 
+## 2026-07-18 — ✅ AUTHED LIVE GATES RUN (real x-api-key) → v1.0.1
+
+User supplied a Console x-api-key via gitignored .env.local. Every NON-SPENDING authed
+gate run live; account confirmed trial wallet, zero deployments, nothing spent.
+
+**VERIFIED:** /v1/user/me 200 (+ bogus-key 401 envelope exactly as researched);
+/v1/balances + /v1/weekly-cost 200 {data}; /v1/deployments = {data:{deployments,
+pagination}} (confirms the v0.4.0 review fix); /v1/wallets requires userId (400
+otherwise), rows carry address/creditAmount/isTrialing; /v1/usage/history REQUIRES
+address (400 otherwise — server does NOT infer), returns daily rows; /stats returns
+{totalSpent, averageSpentPerDay, totalDeployments, averageDeploymentsPerDay}.
+
+**MISMATCH FOUND → FIXED in v1.0.1** (80 tests): usage.ts assumed address optional;
+now auto-resolves via /v1/user/me → /v1/wallets (new resources/account/resolveWallet.ts);
+wallets.ts userId likewise auto-resolves; descriptions updated.
+
+**STILL PENDING (human):** ⛔ PRE-1.1.0 usableAsTool×write gate decision; npm publish
+(both packages); the one real-spend v1.1.0 lifecycle gate.
+
 ## 2026-07-17 — 🏁 v1.0.0 PUBLISH GATE MERGED + TAGGED — train paused at human gates
 
 - **v1.0.0 GREEN, merged + tagged** (run `wf_b6fdaf27-c1e`, 7 agents, 76 tests).
