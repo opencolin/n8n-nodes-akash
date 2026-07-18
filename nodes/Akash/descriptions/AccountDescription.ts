@@ -77,7 +77,7 @@ export const accountFields: INodeProperties[] = [
 		default: '',
 		placeholder: 'akash1...',
 		description:
-			'Owner address (an akash1 bech32 address) to read usage for; leave empty to let the managed wallet owner be inferred',
+			'Owner address (an akash1 bech32 address) to read usage for. Leave empty to use your managed wallet’s address (resolved via Who Am I + Get Wallets).',
 		displayOptions: {
 			show: {
 				resource: ['account'],
@@ -136,9 +136,8 @@ export const accountFields: INodeProperties[] = [
 		name: 'userId',
 		type: 'string',
 		default: '',
-		required: true,
 		description:
-			'The user ID whose managed wallets to list (required by the endpoint); resolve it from Who Am I when unknown',
+			'The user ID whose managed wallets to list. Leave empty to use the API key’s own user (resolved via Who Am I).',
 		displayOptions: {
 			show: {
 				resource: ['account'],

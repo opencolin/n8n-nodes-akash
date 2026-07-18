@@ -4,6 +4,21 @@ All notable changes to `n8n-nodes-akash` are documented here. This project
 adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-07-18
+
+First release validated against the authed Console API with a real x-api-key
+(all NON-SPENDING live gates run: credential test 200/401, balances,
+weekly-cost, deployments envelope, wallets, usage history + stats).
+
+### Fixed
+
+- **Account → Get Usage History**: the server REQUIRES `address` (400 when
+  omitted — it does not infer the caller's wallet, contrary to the previous
+  field description). An empty Address now auto-resolves via
+  `/v1/user/me` → `/v1/wallets` (first managed wallet).
+- **Account → Get Wallets**: `userId` likewise auto-resolves from
+  `/v1/user/me` when left empty (was a required manual field).
+
 ## [1.0.0] - 2026-07-17
 
 The **publish gate**. Freezes the entire **zero-spend** surface — read, monitor,

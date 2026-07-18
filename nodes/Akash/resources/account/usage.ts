@@ -1,15 +1,17 @@
 import type { IDataObject, IExecuteFunctions } from 'n8n-workflow';
 
 import { consoleApiRequest } from '../../transport/consoleApiRequest';
+import { resolveManagedWalletAddress } from './resolveWallet';
 
 /**
  * Account → Get Usage History — `GET /v1/usage/history` (or `/v1/usage/history/stats`).
  *
  * AUTHED, NON-SPENDING `x-api-key` read of billing/usage history for an address over an optional
  * date window. A GET only — no lease, no spend. When the `statistics` toggle is on the aggregate
- * `/v1/usage/history/stats` endpoint is queried instead of the raw history. `address`, `startDate`
- * and `endDate` are optional query params, forwarded only when non-empty (empty `address` lets the
- * managed wallet's own owner be inferred server-side / surfaces a normalized validation error).
+ * `/v1/usage/history/stats` endpoint is queried instead of the raw history. `startDate` and
+ * `endDate` are optional query params, forwarded only when non-empty. `address` is REQUIRED by the
+ * server (LIVE-VERIFIED 2026-07-18: 400 `Required` when omitted — no server-side inference); when
+ * the field is left empty it is resolved via {@link resolveManagedWalletAddress}.
  */
 export async function executeAccountUsage(
 	this: IExecuteFunctions,
@@ -20,10 +22,11 @@ export async function executeAccountUsage(
 	const endDate = (this.getNodeParameter('endDate', itemIndex, '') as string).trim();
 	const statistics = this.getNodeParameter('statistics', itemIndex, false) as boolean;
 
-	const qs: IDataObject = {};
-	if (address) {
-		qs.address = address;
-	}
+	// LIVE-VERIFIED (2026-07-18): the server REQUIRES address (400 when omitted;
+	// it does not infer the caller's wallet) — resolve it when left empty.
+	const qs: IDataObject = {
+		address: address || (await resolveManagedWalletAddress.call(this)),
+	};
 	if (startDate) {
 		qs.startDate = startDate;
 	}

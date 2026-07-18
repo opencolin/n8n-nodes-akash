@@ -40,7 +40,7 @@ describe('package shape (zero-runtime-dep gate)', () => {
 	});
 
 	it('is versioned 1.0.0', () => {
-		expect(pkg.version).toBe('1.0.0');
+		expect(pkg.version).toBe('1.0.1');
 	});
 
 	it('ships exactly dist + README + CHANGELOG + LICENSE in the npm tarball', () => {
