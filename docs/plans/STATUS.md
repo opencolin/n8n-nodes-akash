@@ -3,6 +3,24 @@
 > Newest entries at top. Any agent resuming this project: read ORCHESTRATION.md first,
 > then this file, then RELEASE-PLAN.md (once the council lands it).
 
+## 2026-07-17 — 🏁 v1.0.0 PUBLISH GATE MERGED + TAGGED — train paused at human gates
+
+- **v1.0.0 GREEN, merged + tagged** (run `wf_b6fdaf27-c1e`, 7 agents, 76 tests).
+  Template browse/get (deduped from-list search — orchestrator applied the dedupe
+  pre-merge), packaging finalized (files: dist/README/CHANGELOG/LICENSE), zero runtime
+  deps holds. Publish-readiness statically green.
+- **v0.4.0 was merged + tagged** earlier today (74 tests; one builder package failed
+  garbled and the integrator authored it to spec, then reviewers caught + fix agent
+  fixed the Console list envelope bugs; see run `wf_bf0b2fd3-9ff`).
+- **TRAIN PAUSED — remaining work is behind HUMAN decisions:**
+  1. ⛔ PRE-1.1.0 GATE (RELEASE-PLAN v1.1.0 section): usableAsTool × live-POST decision —
+     split writes into a non-tool node (recommended) / drop usableAsTool / accept with
+     opt-in. v1.1.0 must not wire the live POST until decided.
+  2. Console x-api-key in .env.local → run the deferred NON-SPENDING authed live gates
+     (account reads, credential test, searchDeployments, dryRun no-POST assert).
+  3. npm publish + n8n verified-community submission (HUMAN-ONLY release act).
+  4. The one real-spend lifecycle gate (1.1.0) — HUMAN-ONLY, mainnet USD credit.
+
 ## 2026-07-17 — v0.3.0 MERGED + TAGGED + PUSHED; v0.4.0 launched; repo PUBLIC
 
 - **Repo public:** https://github.com/opencolin/n8n-nodes-akash (main + tags pushed;
