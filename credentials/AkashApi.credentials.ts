@@ -29,14 +29,15 @@ export class AkashApi implements ICredentialType {
 			default: '',
 			required: true,
 			description:
-				'Akash Console API key, sent as the x-api-key header. Create one in Akash Console -> Settings -> API Keys',
+				'Akash Console API key, sent as the x-api-key header. Create one at Akash Console → Settings → API Keys. Only needed for authenticated account/deployment operations — all public GPU/network/provider/chain reads run with no credential.',
 		},
 		{
 			displayName: 'Base URL',
 			name: 'baseUrl',
 			type: 'string',
 			default: 'https://console-api.akash.network',
-			description: 'The Akash Console API endpoint that authenticated requests are sent to',
+			description:
+				'The Akash Console API base URL. Leave the default unless you are targeting a self-hosted or proxy Console endpoint.',
 		},
 	];
 

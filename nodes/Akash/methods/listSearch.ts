@@ -17,6 +17,8 @@ import { consoleApiRequest } from '../transport/consoleApiRequest';
  *   - `searchProviders`        ↔ provider `providerAddress` (Provider → Get / Get Status)
  *   - `searchChainDeployments` ↔ chain `dseq` (Chain → Get Deployment)
  *   - `searchDeployments`      ↔ managed-deployment `dseq` (Deployment → Get) — authed `/v1/deployments`
+ *   - `searchTemplates`        ↔ template `templateId` (Template → Get) — KEYLESS `/v1/templates-list`,
+ *     id-valued (the flattened `templates[].id` across every category)
  *
  * n8n calls these with an `ILoadOptionsFunctions` `this` — not the `IExecuteFunctions` that
  * `execute()` sees. That context still exposes the `getCredentials` / `helpers.httpRequest*` the
@@ -163,5 +165,40 @@ export async function searchDeployments(
 		.filter((item) => item.value !== '')
 		.filter((item) => matchesFilter(item, filter));
 
+	return { results };
+}
+
+/**
+ * Template dropdown — KEYLESS `GET /v1/templates-list` (no `x-api-key`, no spend). After
+ * `consoleApiRequest`'s `{data}` strip the endpoint resolves to an ARRAY of category objects
+ * `[{ title, templates: [{ id, name, logoUrl, summary, tags }] }]` (live-probed 2026-07-17: 30
+ * categories). Every category's `templates[]` is flattened and each template maps to
+ * `{ name: name || id, value: id }`; the template `id` is what `executeTemplateGet` reads back via
+ * `extractValue` and drops straight into `GET /v1/templates/{id}`, so `value` MUST be the id.
+ * Empty ids are dropped and the shared case-insensitive `filter` is applied.
+ */
+export async function searchTemplates(
+	this: ILoadOptionsFunctions,
+	filter?: string,
+): Promise<INodeListSearchResult> {
+	const response = await consoleApiRequest.call(
+		this as unknown as IExecuteFunctions,
+		'GET',
+		'/v1/templates-list',
+	);
+	const categories: IDataObject[] = Array.isArray(response)
+		? (response as unknown as IDataObject[])
+		: [];
+	const results: INodeListSearchItems[] = categories
+		.flatMap((cat) => (Array.isArray(cat.templates) ? (cat.templates as IDataObject[]) : []))
+		.map((tpl): INodeListSearchItems => {
+			const id = typeof tpl.id === 'string' ? tpl.id : '';
+			const name = typeof tpl.name === 'string' && tpl.name ? tpl.name : id;
+			return { name: name || '(unknown template)', value: id };
+		})
+		.filter((item) => item.value !== '')
+		.filter((item) => matchesFilter(item, filter))
+		// The live catalog lists one template under two categories — dedupe by id.
+		.filter((item, index, all) => all.findIndex((other) => other.value === item.value) === index);
 	return { results };
 }

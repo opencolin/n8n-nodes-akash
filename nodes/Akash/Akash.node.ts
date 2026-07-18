@@ -15,6 +15,7 @@ import { networkOperations, networkFields } from './descriptions/NetworkDescript
 import { providerOperations, providerFields } from './descriptions/ProviderDescription';
 import { marketOperations, marketFields } from './descriptions/MarketDescription';
 import { chainOperations, chainFields } from './descriptions/ChainDescription';
+import { templateOperations, templateFields } from './descriptions/TemplateDescription';
 import { loadOptions, listSearch } from './methods';
 import { executeGpuPrices } from './resources/gpu/prices';
 import { executeGpuInventory } from './resources/gpu/inventory';
@@ -48,6 +49,8 @@ import { executeDeploymentList } from './resources/deployment/list';
 import { executeDeploymentGet } from './resources/deployment/get';
 import { executeDeploymentGetPublic } from './resources/deployment/getPublic';
 import { executeDeploymentCreate } from './resources/deployment/create';
+import { executeTemplateList } from './resources/template/list';
+import { executeTemplateGet } from './resources/template/get';
 
 /**
  * Akash — decentralized compute marketplace, read plane.
@@ -69,6 +72,11 @@ import { executeDeploymentCreate } from './resources/deployment/create';
  *     ZERO-SPEND dry-run Create that builds + validates the `POST /v1/deployments` body and sends
  *     NOTHING (`dryRun` default TRUE; the real write path lands in v1.1.0 behind a HUMAN-ONLY gate).
  *   - Bid — the managed-wallet bid poll for a deployment (`/v1/bids?dseq=`).
+ *
+ * v1.0.0 rounds out the read surface with the KEYLESS awesome-akash Template catalog:
+ *   - Template — list the catalog grouped by category (`/v1/templates-list`) and get one template by
+ *     id (`/v1/templates/{id}`). Pure public reads, no `x-api-key`, no spend — the one new user-facing
+ *     feature of the v1.0.0 publish gate.
  *
  * `usableAsTool: true`: every read op moves no funds, so the node is safe to expose to agents. n8n has
  * no per-operation tool flag, so `deployment: create` is exposed too — but it is DRY-RUN-ONLY (wires no
@@ -93,7 +101,7 @@ export class Akash implements INodeType {
 		version: [1],
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
 		description:
-			'Read Akash Network: GPU marketplace prices and inventory, network capacity, provider registry and gateway status, marketplace cost estimates and bid screening, on-chain deployments/leases/orders/bids/certs/balances, plus authed (x-api-key) managed-wallet account/deployment/bid reads and a zero-spend dry-run deployment builder — no code path spends funds',
+			'Read Akash Network: GPU marketplace prices and inventory, network capacity, provider registry and gateway status, marketplace cost estimates and bid screening, on-chain deployments/leases/orders/bids/certs/balances, the awesome-akash template catalog, plus authed (x-api-key) managed-wallet account/deployment/bid reads and a zero-spend dry-run deployment builder — no code path spends funds',
 		usableAsTool: true,
 		defaults: {
 			name: 'Akash',
@@ -146,6 +154,10 @@ export class Akash implements INodeType {
 						name: 'Provider',
 						value: 'provider',
 					},
+					{
+						name: 'Template',
+						value: 'template',
+					},
 				],
 				default: 'gpu',
 			},
@@ -165,6 +177,8 @@ export class Akash implements INodeType {
 			...marketFields,
 			...chainOperations,
 			...chainFields,
+			...templateOperations,
+			...templateFields,
 		],
 	};
 
@@ -250,6 +264,10 @@ export class Akash implements INodeType {
 					result = await executeChainListCertificates.call(this, itemIndex);
 				} else if (resource === 'chain' && operation === 'getBalance') {
 					result = await executeChainGetBalance.call(this, itemIndex);
+				} else if (resource === 'template' && operation === 'list') {
+					result = await executeTemplateList.call(this, itemIndex);
+				} else if (resource === 'template' && operation === 'get') {
+					result = await executeTemplateGet.call(this, itemIndex);
 				} else {
 					throw new NodeOperationError(
 						this.getNode(),
