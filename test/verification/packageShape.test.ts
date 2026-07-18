@@ -39,7 +39,15 @@ describe('package shape (zero-runtime-dep gate)', () => {
 		expect(pkg.homepage).toBe('https://akash.network/docs');
 	});
 
-	it('is versioned 0.4.0', () => {
-		expect(pkg.version).toBe('0.4.0');
+	it('is versioned 1.0.0', () => {
+		expect(pkg.version).toBe('1.0.0');
+	});
+
+	it('ships exactly dist + README + CHANGELOG + LICENSE in the npm tarball', () => {
+		expect(pkg.files).toEqual(['dist', 'README.md', 'CHANGELOG.md', 'LICENSE']);
+	});
+
+	it('carries the community-node keyword required by n8n verification', () => {
+		expect(pkg.keywords).toContain('n8n-community-node-package');
 	});
 });

@@ -4,6 +4,49 @@ All notable changes to `n8n-nodes-akash` are documented here. This project
 adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.0] - 2026-07-17
+
+The **publish gate**. Freezes the entire **zero-spend** surface — read, monitor,
+trigger, and AI-agent-read — as the stable public contract, ready for npm
+publish and n8n verified-community submission. Adds the template catalog, ships
+the full README, and locks the packaging/verification gate. Deliberately shipped
+**before** any fund-spending write, so verification never depends on a human
+financial gate. Still **zero runtime dependencies** and **no code path that
+spends funds**; the managed-wallet DEPLOY write path stays deferred to v1.1.0
+(HUMAN-ONLY). The node stays `version: [1]` — the package version reaches
+`1.0.0`, but no wire or behavior change touches the node's `typeVersion`.
+
+### Added
+
+- **Template resource** — keyless awesome-akash catalog browse: `list`
+  (`GET /v1/templates-list`, the catalog grouped by category) and `get`
+  (`GET /v1/templates/{id}`), with a `searchTemplates` resourceLocator wired
+  through `methods.listSearch` for the template `id` picker.
+- **Finalized node metadata** — codex `.node.json` on both `Akash` and
+  `AkashTrigger` (categories, primary + credential documentation URLs →
+  `akash.network/docs`), node categories/subtitles, credential descriptions +
+  doc URLs, and light/dark SVG icons for the nodes and the credential.
+- **README** — a full per-resource operation reference; the mainnet/sandbox-2
+  endpoint + **pinned-module-version** table (`deployment v1beta4`,
+  `market v1beta5`, `provider v1beta4`, `cert v1`; stale `v1beta3` → 501); the
+  credential-is-optional / keyless-first guidance; the AI-Agent tool note
+  (`N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true`); example workflows; and the
+  prominent **financial-boundary** + **security-posture** statements.
+- **Package-shape verification gate** — the executable check that
+  `package.json` carries no `dependencies` key (zero runtime deps) and that the
+  n8n block is well-formed, run as part of the publish gate alongside the full
+  read/trigger regression suite.
+
+### Security posture
+
+Unchanged. **Zero runtime dependencies**, **no mnemonic**, and **no fund-moving
+code path**. Every operation frozen into this release is a keyless public read,
+an authenticated (`x-api-key`) non-spending `GET`, or the dry-run Create builder
+that sends nothing. The chain LCD and provider-gateway planes stay keyless; the
+only secret the credential holds is the `x-api-key`. The managed-wallet DEPLOY
+write path — the only path that can move funds — remains deferred to v1.1.0 and
+is **HUMAN-ONLY**.
+
 ## [0.4.0] - 2026-07-17
 
 Lights up the AUTHENTICATED (`x-api-key`) managed-wallet backbone — cost/credit
